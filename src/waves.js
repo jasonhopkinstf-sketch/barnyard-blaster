@@ -78,6 +78,7 @@ export class WaveManager {
     this.breakTimer = 4;
     this.hud.setWave(1);
     this.hud.banner('Protect the crops!', 3000);
+    if (this.hooks.onUpcomingWave) this.hooks.onUpcomingWave(1);
   }
 
   nextWave() {
@@ -106,6 +107,7 @@ export class WaveManager {
         this.breakTimer = 8;
         const bonus = this.wave * 200;
         this.hooks.onWaveClear(this.wave, bonus);
+        if (this.hooks.onUpcomingWave) this.hooks.onUpcomingWave(this.wave + 1);
         this.hud.banner(`Wave ${this.wave} cleared! +${bonus}`, 2500, 'good');
         sfx.clear();
         const a = Math.random() * Math.PI * 2;

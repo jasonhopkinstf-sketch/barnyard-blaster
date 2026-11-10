@@ -178,6 +178,12 @@ export class WeaponSystem {
 
   impact(p, hitEnemy) {
     const w = p.w, pos = p.mesh.position;
+    if (!hitEnemy && pos.y < 0.8 && this.world.pond.contains(pos.x, pos.z)) {
+      // landed in the pond: throw up some water
+      this.particles.burst(pos, [0xbfe6ff, 0xffffff, 0x6fb7e8], w.splash ? 22 : 7, { speed: w.splash ? 8 : 5, size: 0.13, life: 0.7, spread: 0.5 });
+      if (w.count === 1) sfx.splat();
+      if (!w.splash) return;
+    }
     if (w.splash) {
       pos.y = Math.max(pos.y, 0.3);
       this.particles.burst(pos, w.colors, 28, { speed: 9, size: 0.26, life: 0.9, spread: 1.2 });

@@ -2,7 +2,19 @@
 
 A fast, cartoony first-person shooter set on a farm. Critters are raiding your crops. You have eggs. Lots of eggs.
 
-Built with [Three.js](https://threejs.org/) as plain ES modules. No bundler, no build step, no external assets: the farm is made of boxes, spheres and cones, and every sound effect is synthesized with Web Audio.
+Built with [Three.js](https://threejs.org/) as plain ES modules. No bundler, no build step, no external assets: the farm is made of boxes, spheres and cones, the sky and pond are procedural shaders, and every sound effect is synthesized with Web Audio.
+
+## The look
+
+The sky, water and final image treatment come from a hand-written GLSL shader (`docs/shader-handoff/`), integrated the way its handoff notes describe: the level and critters stay ordinary meshes, and three pieces of the shader are reused.
+
+- **Sky**: a procedural dome with a sun, moon, twinkling stars and a drifting, sun-lit cloud deck, blending through day, dusk and night.
+- **Duck pond**: animated ripples with Fresnel reflection of that sky, sun and moon glitter, and distance haze. It is shallow: you and ground critters wade through it slowly, crows fly over.
+- **Post pass**: filmic tonemap, gamma, vignette and dither over the whole frame.
+
+Time of day follows the waves. Wave 1 is mid-afternoon, the sun sinks each wave, wave 4 is sunset, the wave 5 boss arrives under the moon, then dawn breaks and the cycle repeats. The sun and moon lights, ambient light and fog are driven from the same value as the sky shader, so the farm always matches the sky.
+
+Add `?post=0` to the URL to bypass the post pass. In the browser console, `barnyard.day.set(0.3)` jumps to sunset and `barnyard.day.set(0.08)` to night.
 
 ## Play
 
@@ -49,7 +61,12 @@ styles.css              HUD and menu styling
 server.mjs              tiny static server (npm run dev)
 vendor/three.*.js       vendored Three.js (pinned; refresh with npm run vendor)
 src/main.js             bootstrap, game loop, menu / playing / paused / game-over states
-src/world.js            builds the farm: barn, silo, tractor, windmill, fences, crops, trees
+src/world.js            builds the farm: barn, silo, tractor, windmill, fences, crops, trees, lights
+src/sky.js              sky dome using the sky shader
+src/water.js            duck pond mesh and material using the water shader
+src/post.js             render target + full-screen finishing pass
+src/daycycle.js         time of day per wave; drives sky, lights, fog and window glow
+src/shaders/            GLSL chunks ported from docs/shader-handoff (sky, water, post)
 src/player.js           pointer-lock look, WASD / sprint / jump, collision, health
 src/weapons.js          three weapons, projectiles, view models, impacts
 src/enemies.js          crow / rabbit / raccoon / boar models, AI, damage, death bursts

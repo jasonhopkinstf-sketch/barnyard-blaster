@@ -11,6 +11,13 @@ function part(geo, color, x, y, z, parent) {
   parent.add(m);
   return m;
 }
+// Unlit part: stays bright whatever the lighting, so eyes shine in the dark.
+function glow(geo, color, x, y, z, parent) {
+  const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color }));
+  m.position.set(x, y, z);
+  parent.add(m);
+  return m;
+}
 
 export const TYPES = {
   // dmgCrop is per second while nibbling; dmgPlayer is per bite.
@@ -28,7 +35,7 @@ const BUILDERS = {
     part(new THREE.ConeGeometry(0.1, 0.45, 6), 0xf0a020, 0, 0.28, 0.95, g).rotation.x = Math.PI / 2;
     part(new THREE.BoxGeometry(0.3, 0.05, 0.6), 0x1b1b22, 0, 0.05, -0.75, g);
     for (const s of [-1, 1]) {
-      part(new THREE.SphereGeometry(0.07, 6, 4), 0xffffff, s * 0.15, 0.38, 0.78, g);
+      glow(new THREE.SphereGeometry(0.07, 6, 4), 0xfff2a8, s * 0.15, 0.38, 0.78, g);
       part(new THREE.SphereGeometry(0.035, 6, 4), 0x000000, s * 0.17, 0.39, 0.84, g);
       const wing = new THREE.Group();
       wing.position.set(s * 0.3, 0.15, 0);
@@ -46,7 +53,7 @@ const BUILDERS = {
     for (const s of [-1, 1]) {
       part(new THREE.BoxGeometry(0.16, 0.65, 0.08), 0xe8e8e8, s * 0.13, 1.3, 0.4, g).rotation.z = s * -0.15;
       part(new THREE.BoxGeometry(0.08, 0.45, 0.04), 0xffb6c1, s * 0.13, 1.3, 0.44, g).rotation.z = s * -0.15;
-      part(new THREE.SphereGeometry(0.06, 6, 4), 0xff3b3b, s * 0.15, 0.88, 0.7, g);
+      glow(new THREE.SphereGeometry(0.06, 6, 4), 0xff3b3b, s * 0.15, 0.88, 0.7, g);
     }
     part(new THREE.SphereGeometry(0.06, 6, 4), 0xffb6c1, 0, 0.75, 0.75, g);
     parts.body = g;
@@ -60,7 +67,7 @@ const BUILDERS = {
     part(new THREE.SphereGeometry(0.1, 6, 4), 0x111111, 0, 0.8, 1.04, g);
     for (const s of [-1, 1]) {
       part(new THREE.ConeGeometry(0.12, 0.25, 4), 0x8a8a8a, s * 0.22, 1.15, 0.6, g);
-      part(new THREE.SphereGeometry(0.05, 6, 4), 0xffffff, s * 0.15, 0.92, 1.03, g);
+      glow(new THREE.SphereGeometry(0.05, 6, 4), 0xc8ffb0, s * 0.15, 0.92, 1.03, g);
     }
     const tail = new THREE.Group();
     tail.position.set(0, 0.6, -0.8);
@@ -77,7 +84,7 @@ const BUILDERS = {
     part(new THREE.CylinderGeometry(0.3, 0.35, 0.4, 10), 0xd9a3a3, 0, 0.85, 2.15, g).rotation.x = Math.PI / 2;
     for (const s of [-1, 1]) {
       part(new THREE.ConeGeometry(0.08, 0.5, 6), 0xffffff, s * 0.3, 0.7, 2.0, g).rotation.x = -0.9;
-      part(new THREE.SphereGeometry(0.08, 6, 4), 0xff2222, s * 0.3, 1.25, 1.95, g);
+      glow(new THREE.SphereGeometry(0.08, 6, 4), 0xff2222, s * 0.3, 1.25, 1.95, g);
       part(new THREE.ConeGeometry(0.18, 0.4, 4), 0x5e3f27, s * 0.4, 1.6, 1.3, g);
       for (const f of [-1, 1]) part(new THREE.CylinderGeometry(0.16, 0.14, 0.8, 7), 0x4a3320, s * 0.5, 0.35, f * 0.9, g);
     }
@@ -112,7 +119,7 @@ class Enemy {
     this.mats = [];
     this.mesh.traverse((o) => { if (o.isMesh) this.mats.push(o.material); });
   }
-  setEmissive(hex) { for (const m of this.mats) m.emissive.setHex(hex); }
+  setEmissive(hex) { for (const m of this.mats) if (m.emissive) m.emissive.setHex(hex); }
 }
 
 export class EnemyManager {
@@ -199,6 +206,8 @@ export class EnemyManager {
       const dx = tx - m.position.x, dz = tz - m.position.z;
       const dist = Math.hypot(dx, dz) || 0.0001;
       const nx = dx / dist, nz = dz / dist;
+      // ground critters wade slowly through the pond; crows fly over it
+      const speed = d.speed * (!d.fly && this.world.pond.contains(m.position.x, m.position.z) ? 0.6 : 1);
 
       if (e.stun > 0) {
         e.stun -= dt;
@@ -206,8 +215,8 @@ export class EnemyManager {
         m.rotation.y += dt * 6;
       } else if (e.type === 'boar' && e.charge > 0) {
         e.charge -= dt;
-        m.position.x += e.chargeDir.x * d.speed * 2.4 * dt;
-        m.position.z += e.chargeDir.z * d.speed * 2.4 * dt;
+        m.position.x += e.chargeDir.x * speed * 2.4 * dt;
+        m.position.z += e.chargeDir.z * speed * 2.4 * dt;
         m.rotation.y = Math.atan2(e.chargeDir.x, e.chargeDir.z);
         e.moving = true;
         if (tgt.kind === 'player' && dist < d.reach + 0.8) {
@@ -221,8 +230,8 @@ export class EnemyManager {
         }
       } else if (dist > stopDist) {
         e.moving = true;
-        m.position.x += nx * d.speed * dt;
-        m.position.z += nz * d.speed * dt;
+        m.position.x += nx * speed * dt;
+        m.position.z += nz * speed * dt;
         m.rotation.y = Math.atan2(nx, nz);
         if (e.type === 'boar') {
           e.chargeCd -= dt;

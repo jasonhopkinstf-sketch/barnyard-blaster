@@ -20,6 +20,7 @@ export class Player {
     this.maxHp = 100;
     this.hp = 100;
     this.bob = 0;
+    this.wade = 0;
     this.hurtCooldown = 0;
     this.locked = false;
     this.lockFailed = false;
@@ -95,7 +96,10 @@ export class Player {
     const k = this.keys;
     const fwd = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
     const str = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
-    const speed = (k.has('ShiftLeft') || k.has('ShiftRight')) ? SPRINT : SPEED;
+    // Wading through the pond is slow going, and you sink in a little.
+    const wading = this.onGround && this.world.pond.contains(this.pos.x, this.pos.z);
+    this.wade += ((wading ? 1 : 0) - this.wade) * Math.min(1, dt * 8);
+    const speed = ((k.has('ShiftLeft') || k.has('ShiftRight')) ? SPRINT : SPEED) * (wading ? 0.6 : 1);
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
     let mx = -sin * fwd + cos * str;
     let mz = -cos * fwd - sin * str;
@@ -127,7 +131,7 @@ export class Player {
 
   syncCamera(moving = false) {
     const bobY = moving ? Math.sin(this.bob) * 0.05 : 0;
-    this.camera.position.set(this.pos.x, this.pos.y + EYE + bobY, this.pos.z);
+    this.camera.position.set(this.pos.x, this.pos.y + EYE + bobY - this.wade * 0.3, this.pos.z);
     this.camera.rotation.set(this.pitch, this.yaw, 0);
   }
 }

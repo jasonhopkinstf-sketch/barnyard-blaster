@@ -7,22 +7,29 @@ import { WaveManager } from './waves.js';
 import { Particles } from './effects.js';
 import { HUD } from './hud.js';
 import { initAudio, sfx } from './audio.js';
+import { createSky } from './sky.js';
+import { Post, POST_ENABLED } from './post.js';
+import { DayCycle } from './daycycle.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('game');
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// With the post pass on, the scene is antialiased in its own MSAA render target instead.
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !POST_ENABLED });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
+const post = new Post(renderer);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 400);
 scene.add(camera); // the weapon view model hangs off the camera
 
 const hud = new HUD();
-const world = buildWorld(scene);
+const sky = createSky(scene);
+const world = buildWorld(scene, sky.uniforms);
+const day = new DayCycle({ scene, lights: world.lights, uniforms: sky.uniforms, windowMat: world.windowMat });
 const particles = new Particles(scene);
 const player = new Player(camera, canvas, world, hud);
 
@@ -59,6 +66,7 @@ weapons.vm.visible = false;
 const waves = new WaveManager(scene, enemies, player, weapons, hud, {
   crops: world.crops,
   onWaveClear(n, bonus) { addScore(bonus); },
+  onUpcomingWave(n) { day.setWave(n); }, // the sky eases to the next wave's time of day during the break
 });
 
 // ---------- state machine ----------
@@ -84,6 +92,8 @@ function resetAll() {
 function startGame() {
   initAudio();
   resetAll();
+  day.setWave(1);
+  day.set(day.target); // every run starts in the afternoon, wherever the menu time-lapse was
   game.state = 'playing';
   showOverlay(null);
   hud.show();
@@ -147,12 +157,14 @@ document.addEventListener('keydown', (e) => {
 });
 
 // Handy for debugging from the console.
-window.barnyard = { game, player, weapons, enemies, waves, world, camera, scene };
+// e.g. barnyard.day.set(0.3) for sunset, barnyard.day.set(0.08) for night.
+window.barnyard = { game, player, weapons, enemies, waves, world, camera, scene, day, sky, post, renderer };
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  post.setSize();
 });
 
 // ---------- main loop ----------
@@ -170,6 +182,7 @@ function frame() {
     waves.update(dt);
     particles.update(dt);
     world.update(dt);
+    day.update(dt);
 
     if (game.comboTimer > 0) {
       game.comboTimer -= dt;
@@ -190,8 +203,12 @@ function frame() {
       game.menuT += dt * 0.12;
       camera.position.set(Math.cos(game.menuT) * 38, 10, Math.sin(game.menuT) * 38);
       camera.lookAt(0, 3, 0);
+      // slow time-lapse behind the menu: afternoon, sunset, night, dawn and round again
+      day.set(0.47 + 0.4 * Math.sin(game.menuT * 0.9 + 0.9));
     }
   }
-  renderer.render(scene, camera);
+  const time = timer.getElapsed();
+  sky.update(camera, time);
+  post.render(scene, camera, time);
 }
 frame();

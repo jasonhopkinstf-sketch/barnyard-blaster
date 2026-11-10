@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { makeBox } from './collision.js';
+import { POND, pondDistance, buildPond } from './water.js';
 
 export const ARENA = 44;   // the player can roam within +/- ARENA
 export const FENCE = 46;   // fence line
@@ -27,22 +28,29 @@ export function mulberry32(a) {
   };
 }
 
-export function buildWorld(scene) {
+export function buildWorld(scene, skyUniforms) {
   const obstacles = [];
   const crops = [];
   const rng = mulberry32(1337);
 
-  scene.background = new THREE.Color(0x8ed0f6);
+  // The sky itself is the dome in sky.js. Fog colour, light colours, directions and
+  // intensities are all driven each frame by DayCycle; these are just starting values.
   scene.fog = new THREE.Fog(0x8ed0f6, 70, 170);
 
-  scene.add(new THREE.HemisphereLight(0xdff4ff, 0x4f7a2a, 0.75));
-  const sun = new THREE.DirectionalLight(0xfff1cc, 1.7);
+  const hemi = new THREE.HemisphereLight(0xdff4ff, 0x4f7a2a, 2.2);
+  scene.add(hemi);
+  const makeShadowLight = (color, intensity, mapSize) => {
+    const l = new THREE.DirectionalLight(color, intensity);
+    l.castShadow = true;
+    l.shadow.mapSize.set(mapSize, mapSize);
+    Object.assign(l.shadow.camera, { left: -65, right: 65, top: 65, bottom: -65, near: 1, far: 220 });
+    l.shadow.bias = -0.0005;
+    scene.add(l);
+    return l;
+  };
+  const sun = makeShadowLight(0xfff1cc, 3.0, 2048);
   sun.position.set(40, 70, 25);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, { left: -65, right: 65, top: 65, bottom: -65, near: 1, far: 220 });
-  sun.shadow.bias = -0.0005;
-  scene.add(sun);
+  const moon = makeShadowLight(0x99b8ff, 0, 1024);
 
   const ground = mesh(new THREE.PlaneGeometry(500, 500), 0x6fae3c, 0, 0, 0, scene, { shadow: false });
   ground.rotation.x = -Math.PI / 2;
@@ -52,12 +60,17 @@ export function buildWorld(scene) {
   const tuftGeo = new THREE.ConeGeometry(0.25, 0.7, 5);
   for (let i = 0; i < 180; i++) {
     const x = (rng() - 0.5) * 2 * ARENA, z = (rng() - 0.5) * 2 * ARENA;
-    const t = mesh(tuftGeo, rng() < 0.2 ? 0xffe066 : 0x4f9a2f, x, 0.3, z, scene, { shadow: false });
-    t.rotation.y = rng() * 6;
+    const color = rng() < 0.2 ? 0xffe066 : 0x4f9a2f, rot = rng() * 6;
+    if (pondDistance(x, z, 1.5) < 1) continue; // no grass growing in the pond
+    const t = mesh(tuftGeo, color, x, 0.3, z, scene, { shadow: false });
+    t.rotation.y = rot;
   }
 
   buildFence(scene);
-  buildBarn(scene, obstacles, -24, -22);
+  const windowMat = new THREE.MeshBasicMaterial({ color: 0x3b2a16 });
+  buildBarn(scene, obstacles, -24, -22, windowMat);
+  const pond = buildPond(scene, skyUniforms);
+  const ducks = buildPondLife(scene, rng);
   buildSilo(scene, obstacles, -36, -14);
   buildTractor(scene, obstacles, 26, -10);
   buildScarecrow(scene, 0, -14);
@@ -65,7 +78,7 @@ export function buildWorld(scene) {
   buildTrough(scene, obstacles, -30, 20);
   buildCoop(scene, obstacles, 12, -32);
 
-  const bales = [[12, -22, 0], [15, -20, 0.6], [13.5, -21, 1.2, true], [-10, 30, 0.3], [34, 8, 1.1], [-30, 6, 0.9], [8, 36, 0.2], [-8, -36, 1.4], [36, -30, 0.5]];
+  const bales = [[12, -22, 0], [15, -20, 0.6], [13.5, -21, 1.2, true], [-10, 30, 0.3], [40, 17, 1.1], [-30, 6, 0.9], [8, 36, 0.2], [-8, -36, 1.4], [36, -30, 0.5]];
   for (const [x, z, rot, top] of bales) {
     const h = mesh(new THREE.CylinderGeometry(1.2, 1.2, 2.4, 12), 0xd9b64a, x, top ? 3.4 : 1.2, z, scene);
     h.rotation.z = Math.PI / 2;
@@ -88,16 +101,22 @@ export function buildWorld(scene) {
     const a = (i / 12) * Math.PI * 2, r = 170;
     mesh(new THREE.SphereGeometry(45 + (i % 3) * 14, 14, 10), 0x5b9a3a, Math.cos(a) * r, -22, Math.sin(a) * r, scene, { shadow: false, receive: false });
   }
-  const sunDisc = new THREE.Mesh(new THREE.SphereGeometry(7, 12, 8), new THREE.MeshBasicMaterial({ color: 0xfff6b0, fog: false }));
-  sunDisc.position.set(120, 130, 60);
-  scene.add(sunDisc);
-  for (let i = 0; i < 16; i++) buildCloud(scene, (rng() - 0.5) * 300, 45 + rng() * 25, (rng() - 0.5) * 300, rng);
 
+  let t = 0;
   return {
     obstacles, crops, bounds: ARENA,
+    lights: { sun, moon, hemi },
+    windowMat,
+    pond,
     update(dt) {
+      t += dt;
       blades.rotation.z -= dt * 0.9;
       for (const c of crops) c.update(dt);
+      for (const d of ducks) {
+        const a = d.phase + t * d.speed;
+        d.mesh.position.set(POND.x + Math.cos(a) * d.rx, 0.1 + Math.sin(t * 2.2 + d.phase) * 0.03, POND.z + Math.sin(a) * d.rz);
+        d.mesh.rotation.y = -a + (d.speed > 0 ? 0 : Math.PI);
+      }
     },
     reset() { for (const c of crops) c.reset(); },
   };
@@ -129,7 +148,31 @@ function buildFence(scene) {
   }
 }
 
-function buildBarn(scene, obstacles, x, z) {
+// Reeds around the pond rim and a couple of ducks paddling in circles.
+function buildPondLife(scene, rng) {
+  for (let i = 0; i < 16; i++) {
+    const a = rng() * Math.PI * 2;
+    const k = 0.98 + rng() * 0.1;
+    const x = POND.x + Math.cos(a) * POND.rx * k, z = POND.z + Math.sin(a) * POND.rz * k;
+    const h = 1.1 + rng() * 0.9;
+    const reed = mesh(new THREE.CylinderGeometry(0.03, 0.04, h, 5), 0x4f7a2a, x, h / 2, z, scene);
+    reed.rotation.z = (rng() - 0.5) * 0.25;
+    if (rng() < 0.6) mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.32, 6), 0x5a3a1a, x, h - 0.1, z, scene);
+  }
+  const ducks = [];
+  for (const [color, phase, speed, k] of [[0xffffff, 0.5, 0.22, 0.45], [0xf2c94c, 3.4, -0.17, 0.62]]) {
+    const g = new THREE.Group();
+    scene.add(g);
+    mesh(new THREE.SphereGeometry(0.34, 10, 8), color, 0, 0.12, 0, g).scale.set(1, 0.7, 1.4);
+    mesh(new THREE.SphereGeometry(0.2, 8, 6), color, 0, 0.45, 0.35, g);
+    mesh(new THREE.ConeGeometry(0.07, 0.22, 5), 0xf08a24, 0, 0.42, 0.6, g).rotation.x = Math.PI / 2;
+    mesh(new THREE.ConeGeometry(0.12, 0.3, 4), color, 0, 0.3, -0.5, g).rotation.x = -1.0;
+    ducks.push({ mesh: g, phase, speed, rx: POND.rx * k, rz: POND.rz * k });
+  }
+  return ducks;
+}
+
+function buildBarn(scene, obstacles, x, z, windowMat) {
   const g = new THREE.Group();
   g.position.set(x, 0, z);
   scene.add(g);
@@ -155,7 +198,13 @@ function buildBarn(scene, obstacles, x, z) {
     box(0.3, 8.2, 0.3, 0xf2f2f2, s * 7.05, 4, 6.05, g);
     box(0.3, 8.2, 0.3, 0xf2f2f2, s * 7.05, 4, -6.05, g);
   }
-  box(1.6, 1.6, 0.3, 0x3b2a16, 0, 9.4, 6.05, g); // hayloft window
+  // Hayloft window and two side windows: unlit, so DayCycle can make them glow at night.
+  for (const [wx, wy, ww, wh] of [[0, 9.4, 1.6, 1.6], [-4.6, 4.6, 1.3, 1.5], [4.6, 4.6, 1.3, 1.5]]) {
+    const win = new THREE.Mesh(new THREE.BoxGeometry(ww, wh, 0.3), windowMat);
+    win.position.set(wx, wy, 6.05);
+    g.add(win);
+    box(ww + 0.3, 0.15, 0.34, 0xf2f2f2, wx, wy - wh / 2 - 0.07, 6.05, g);
+  }
   box(0.1, 2.2, 0.1, 0x333333, 0, 13.2, 0, g);  // weather vane
   const rooster = box(0.9, 0.5, 0.1, 0x333333, 0, 14.3, 0, g);
   rooster.rotation.y = 0.6;
@@ -329,19 +378,5 @@ function buildTree(scene, x, z, s, rng) {
     mesh(new THREE.SphereGeometry(3, 9, 7), 0x3f9b3a, 0, 5.5, 0, g);
     mesh(new THREE.SphereGeometry(2.2, 9, 7), 0x4caf50, 1.6, 6.8, 0.8, g);
     mesh(new THREE.SphereGeometry(2.0, 9, 7), 0x2f7a3a, -1.5, 6.5, -0.6, g);
-  }
-}
-
-function buildCloud(scene, x, y, z, rng) {
-  const g = new THREE.Group();
-  g.position.set(x, y, z);
-  scene.add(g);
-  const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, fog: false });
-  const n = 3 + Math.floor(rng() * 3);
-  for (let i = 0; i < n; i++) {
-    const m = new THREE.Mesh(new THREE.SphereGeometry(4 + rng() * 5, 8, 6), mat);
-    m.position.set((i - n / 2) * 6, rng() * 2, (rng() - 0.5) * 4);
-    m.scale.y = 0.55;
-    g.add(m);
   }
 }
