@@ -91,6 +91,8 @@ function resetAll() {
 
 function startGame() {
   initAudio();
+  // Drop focus from the button so Space / Enter play the game instead of pressing it again.
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   resetAll();
   day.setWave(1);
   day.set(day.target); // every run starts in the afternoon, wherever the menu time-lapse was
@@ -101,7 +103,7 @@ function startGame() {
   weapons.enabled = true;
   weapons.vm.visible = true;
   player.lock().then((ok) => {
-    if (!ok) hud.banner('Pointer lock unavailable: keep the mouse over the game', 3500, 'pickup');
+    if (!ok) hud.banner('No mouse capture here: turn with Q / E or the arrow keys, or rest the pointer at a screen edge', 5000, 'pickup');
   });
   waves.begin();
 }
@@ -109,6 +111,7 @@ function startGame() {
 function pauseGame() {
   game.state = 'paused';
   weapons.firing = false;
+  weapons.keyFiring = false;
   showOverlay('paused');
 }
 
@@ -122,6 +125,7 @@ function gameOver(title) {
   player.enabled = false;
   weapons.enabled = false;
   weapons.firing = false;
+  weapons.keyFiring = false;
   weapons.vm.visible = false;
   if (document.pointerLockElement) document.exitPointerLock();
   hud.hide();

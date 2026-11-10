@@ -4,6 +4,7 @@ import { sfx } from './audio.js';
 
 const lam = (c) => new THREE.MeshLambertMaterial({ color: c });
 const UP = new THREE.Vector3(0, 1, 0);
+const AIM_ASSIST = 0.09; // radians (about 5 degrees) of forgiveness around a critter
 
 export class WeaponSystem {
   constructor(scene, camera, player, enemies, particles, hud, world) {
@@ -17,6 +18,7 @@ export class WeaponSystem {
     this.current = 0;
     this.cooldown = 0;
     this.firing = false;
+    this.keyFiring = false;
     this.projectiles = [];
     this.recoil = 0;
     this.enabled = false;
@@ -28,16 +30,42 @@ export class WeaponSystem {
       this.tryFire(true);
     });
     document.addEventListener('mouseup', (e) => { if (e.button === 0) this.firing = false; });
+    // Keyboard fire (F or Enter) so a trackpad hand never has to click while the other hand
+    // is on the movement keys; R swaps to the next weapon.
+    const FIRE_KEYS = ['KeyF', 'Enter'];
     document.addEventListener('keydown', (e) => {
-      if (!this.enabled) return;
+      if (!this.enabled || e.repeat) return;
       const i = ['Digit1', 'Digit2', 'Digit3'].indexOf(e.code);
       if (i >= 0) this.select(i);
+      if (e.code === 'KeyR') this.select((this.current + 1) % 3);
+      if (FIRE_KEYS.includes(e.code)) { this.keyFiring = true; this.tryFire(true); }
     });
-    document.addEventListener('wheel', (e) => {
-      if (!this.enabled || !player.hasControl) return;
-      this.select((this.current + (e.deltaY > 0 ? 1 : 2)) % 3);
-    }, { passive: true });
+    document.addEventListener('keyup', (e) => { if (FIRE_KEYS.includes(e.code)) this.keyFiring = false; });
+    window.addEventListener('blur', () => { this.firing = false; this.keyFiring = false; });
+    // A real mouse wheel cycles weapons; trackpad scrolling is used for looking (see player.js).
+    player.onWheelNotch = (dir) => { if (this.enabled) this.select((this.current + (dir > 0 ? 1 : 2)) % 3); };
     this.select(0);
+  }
+
+  // Gentle aim assist: if a critter is within a few degrees of the crosshair, the shot is
+  // sent at it (with its drop compensated). Keeps keyboard and trackpad aiming playable.
+  assist(origin, aimDir, w) {
+    let best = null, bestAng = AIM_ASSIST, bestDist = 0;
+    const to = new THREE.Vector3();
+    for (const e of this.enemies.list) {
+      to.copy(e.mesh.position);
+      to.y += e.def.fly ? 0 : e.def.radius * 0.8;
+      to.sub(origin);
+      const dist = to.length();
+      if (dist < 1.5 || dist > 70) continue;
+      const ang = aimDir.angleTo(to) - Math.atan2(e.def.radius, dist); // angle past the critter's edge
+      if (ang < bestAng) { bestAng = ang; best = e; bestDist = dist; }
+    }
+    if (!best) return aimDir;
+    const t = bestDist / w.speed;
+    to.copy(best.mesh.position);
+    to.y += (best.def.fly ? 0 : best.def.radius * 0.8) + 0.5 * w.gravity * t * t;
+    return to.sub(origin).normalize();
   }
 
   buildViewModels() {
@@ -103,6 +131,7 @@ export class WeaponSystem {
     this.weapons.forEach((w, i) => { w.ammo = this.initialAmmo[i]; });
     this.cooldown = 0;
     this.firing = false;
+    this.keyFiring = false;
     this.select(0);
   }
 
@@ -122,7 +151,8 @@ export class WeaponSystem {
     const origin = this.camera.position.clone().addScaledVector(dir, 0.6).addScaledVector(right, 0.25).addScaledVector(UP, -0.2);
     // Shots leave the muzzle (offset from the eye) but converge on the crosshair at mid range.
     const aimPoint = this.camera.position.clone().addScaledVector(dir, 35);
-    const aimDir = aimPoint.sub(origin).normalize();
+    let aimDir = aimPoint.sub(origin).normalize();
+    if (!w.lob) aimDir = this.assist(origin, aimDir, w);
     for (let i = 0; i < w.count; i++) {
       const d = aimDir.clone();
       if (w.spread) {
@@ -142,7 +172,7 @@ export class WeaponSystem {
 
   update(dt) {
     this.cooldown -= dt;
-    if (this.firing) this.tryFire(false);
+    if (this.firing || this.keyFiring) this.tryFire(false);
 
     this.recoil = Math.max(0, this.recoil - dt * 6);
     this.vm.position.z = -0.7 + this.recoil * 0.14;

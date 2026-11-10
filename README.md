@@ -18,10 +18,17 @@ Add `?post=0` to the URL to bypass the post pass. In the browser console, `barny
 
 ## Play
 
-- **Mouse** look, **Click** fire (hold to auto-fire the egg launcher)
+The whole game is playable from the keyboard, so it works on a laptop trackpad as well as with a mouse.
+
 - **W A S D** move, **Shift** sprint, **Space** jump
-- **1 / 2 / 3** or **scroll** to switch weapons
+- **Q / E** or **Left / Right arrows** turn, **Up / Down arrows** look up and down
+- **F**, **Enter** or **Click** fire (hold to auto-fire the egg launcher)
+- **Mouse** looks around; on a trackpad a **two-finger swipe** looks around too (**I** flips its direction)
+- **1 / 2 / 3** pick a weapon, **R** or the mouse wheel cycles
+- **- / =** lower or raise look sensitivity (remembered)
 - **Esc** pauses
+
+Shots get a little aim assist: if a critter is within a few degrees of the crosshair, the shot goes to it. Where the browser cannot capture the mouse (some embedded previews), resting the pointer at the left or right edge of the window keeps you turning.
 
 Protect the three crop patches (corn, pumpkins, carrots) from waves of crows, rabbits and raccoons. Every fifth wave brings a boss boar that charges you. Lose all three patches or all your health and the farm falls.
 
