@@ -30,9 +30,9 @@ export class WeaponSystem {
       this.tryFire(true);
     });
     document.addEventListener('mouseup', (e) => { if (e.button === 0) this.firing = false; });
-    // Keyboard fire (F or Enter) so a trackpad hand never has to click while the other hand
-    // is on the movement keys; R swaps to the next weapon.
-    const FIRE_KEYS = ['KeyF', 'Enter'];
+    // Keyboard fire (Space, with F and Enter as alternatives) so a trackpad hand never has to
+    // click while the other hand is on the movement keys; R swaps to the next weapon.
+    const FIRE_KEYS = ['Space', 'KeyF', 'Enter'];
     document.addEventListener('keydown', (e) => {
       if (!this.enabled || e.repeat) return;
       const i = ['Digit1', 'Digit2', 'Digit3'].indexOf(e.code);

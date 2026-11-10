@@ -10,6 +10,7 @@ import { initAudio, sfx } from './audio.js';
 import { createSky } from './sky.js';
 import { Post, POST_ENABLED } from './post.js';
 import { DayCycle } from './daycycle.js';
+import { Minimap } from './minimap.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('game');
@@ -27,6 +28,7 @@ const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerH
 scene.add(camera); // the weapon view model hangs off the camera
 
 const hud = new HUD();
+const minimap = new Minimap($('minimap'));
 const sky = createSky(scene);
 const world = buildWorld(scene, sky.uniforms);
 const day = new DayCycle({ scene, lights: world.lights, uniforms: sky.uniforms, windowMat: world.windowMat });
@@ -103,20 +105,28 @@ function startGame() {
   weapons.enabled = true;
   weapons.vm.visible = true;
   player.lock().then((ok) => {
-    if (!ok) hud.banner('No mouse capture here: turn with Q / E or the arrow keys, or rest the pointer at a screen edge', 5000, 'pickup');
+    if (!ok) hud.banner('No mouse capture here: turn with the arrow keys', 5000, 'pickup');
   });
   waves.begin();
 }
 
 function pauseGame() {
   game.state = 'paused';
+  // Input is off while paused, so Space, Enter and clicks cannot fire behind the pause screen.
+  player.enabled = false;
+  weapons.enabled = false;
   weapons.firing = false;
   weapons.keyFiring = false;
+  player.keys.clear();
   showOverlay('paused');
+  $('resume-btn').focus(); // Space or Enter resumes
 }
 
 function resumeGame() {
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   game.state = 'playing';
+  player.enabled = true;
+  weapons.enabled = true;
   showOverlay(null);
 }
 
@@ -159,6 +169,11 @@ document.addEventListener('keydown', (e) => {
   // With pointer lock, Esc releases the lock and onLockChange pauses for us.
   if (e.code === 'Escape' && game.state === 'playing' && !player.locked) pauseGame();
 });
+// If mouse capture was refused earlier (browsers block it for a moment after Esc), any click
+// on the game tries again, so play is not stuck in the no-capture fallback.
+canvas.addEventListener('mousedown', () => {
+  if (game.state === 'playing' && !player.locked) player.lock();
+});
 
 // Handy for debugging from the console.
 // e.g. barnyard.day.set(0.3) for sunset, barnyard.day.set(0.08) for night.
@@ -174,9 +189,11 @@ window.addEventListener('resize', () => {
 // ---------- main loop ----------
 const timer = new THREE.Timer();
 let cropHudTimer = 0;
-function frame() {
+function frame(ts) {
   requestAnimationFrame(frame);
-  timer.update();
+  // Step by the browser's own frame timestamp (aligned to the display refresh) rather than
+  // the time this callback happened to run, so motion advances by even amounts each frame.
+  timer.update(ts);
   const dt = Math.min(0.05, timer.getDelta());
 
   if (game.state === 'playing') {
@@ -187,6 +204,7 @@ function frame() {
     particles.update(dt);
     world.update(dt);
     day.update(dt);
+    minimap.update(dt, { player, enemies: enemies.list, world, pickups: waves.pickups });
 
     if (game.comboTimer > 0) {
       game.comboTimer -= dt;
@@ -215,4 +233,4 @@ function frame() {
   sky.update(camera, time);
   post.render(scene, camera, time);
 }
-frame();
+requestAnimationFrame(frame);

@@ -101,7 +101,8 @@ export class WaveManager {
         this.enemies.spawn(this.queue.shift());
         this.spawnTimer = this.interval;
       }
-      this.hud.setEnemiesLeft(this.queue.length + this.enemies.count);
+      const left = this.queue.length + this.enemies.count;
+      this.hud.setStatus(left === 1 ? '1 critter left' : `${left} critters left`);
       if (!this.queue.length && this.enemies.count === 0) {
         this.state = 'break';
         this.breakTimer = 8;
@@ -116,6 +117,7 @@ export class WaveManager {
       }
     } else if (this.state === 'break') {
       this.breakTimer -= dt;
+      this.hud.setStatus(`Next wave in ${Math.max(1, Math.ceil(this.breakTimer))}s`);
       for (const c of this.hooks.crops) {
         if (c.alive && c.hp < c.maxHp) { c.hp = Math.min(c.maxHp, c.hp + 4 * dt); c.dirty = true; }
       }
@@ -166,6 +168,6 @@ export class WaveManager {
     this.wave = 0;
     this.queue = [];
     this.state = 'idle';
-    this.hud.setEnemiesLeft(0);
+    this.hud.setStatus('');
   }
 }

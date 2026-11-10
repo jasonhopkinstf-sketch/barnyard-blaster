@@ -20,13 +20,16 @@ Add `?post=0` to the URL to bypass the post pass. In the browser console, `barny
 
 The whole game is playable from the keyboard, so it works on a laptop trackpad as well as with a mouse.
 
-- **W A S D** move, **Shift** sprint, **Space** jump
-- **Q / E** or **Left / Right arrows** turn, **Up / Down arrows** look up and down
-- **F**, **Enter** or **Click** fire (hold to auto-fire the egg launcher)
+- **W A S D** move, **Shift** sprint, **C** jump
+- **Left / Right arrows** or **Q / E** turn (a tap nudges, holding spins faster), **Up / Down arrows** look up and down
+- **Space** fires (hold to auto-fire the egg launcher); **F**, **Enter** and **Click** fire too
 - **Mouse** looks around; on a trackpad a **two-finger swipe** looks around too (**I** flips its direction)
 - **1 / 2 / 3** pick a weapon, **R** or the mouse wheel cycles
 - **- / =** lower or raise look sensitivity (remembered)
-- **Esc** pauses
+- **H** shows or hides the on-screen key list
+- **Esc** pauses; **Space** or **Enter** resumes
+
+The corner map shows the whole farm from above: red dots are critters, green blocks are crop patches (they flash while being eaten), yellow squares are pickups and the white arrow is you. The line under it counts the critters left in the wave, or counts down to the next one.
 
 Shots get a little aim assist: if a critter is within a few degrees of the crosshair, the shot goes to it. Where the browser cannot capture the mouse (some embedded previews), resting the pointer at the left or right edge of the window keeps you turning.
 
@@ -79,7 +82,8 @@ src/weapons.js          three weapons, projectiles, view models, impacts
 src/enemies.js          crow / rabbit / raccoon / boar models, AI, damage, death bursts
 src/waves.js            wave composition, spawn pacing, pickups
 src/effects.js          particle bursts
-src/hud.js              DOM HUD updates, banners, hit marker, damage flash
+src/hud.js              DOM HUD updates, banners, key legend, hit marker, damage flash
+src/minimap.js          top-down corner map of critters, crops and the player
 src/audio.js            Web Audio synthesized sound effects
 src/collision.js        AABB helpers
 ```

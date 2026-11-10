@@ -6,13 +6,15 @@ import { sfx } from './audio.js';
 const EYE = 1.7, RADIUS = 0.6, SPEED = 9, SPRINT = 14, JUMP = 7.5, GRAVITY = 22;
 const MOUSE_SENS = 0.0026;  // radians per pixel of pointer movement
 const SWIPE_SENS = 0.0034;  // radians per pixel of two-finger trackpad scroll
-const TURN_RATE = 2.8;      // radians per second when turning with keys
+const TURN_SLOW = 1.3;      // radians per second when a turn key is first pressed (fine aiming)
+const TURN_FAST = 3.6;      // ...ramping up to this while the key stays held (spinning round)
+const TURN_RAMP = 0.55;     // seconds to go from slow to fast
 const LOOK_RATE = 1.5;      // radians per second when looking up / down with keys
 const EDGE_ZONE = 0.12;     // fraction of the window width that acts as a turn zone (no pointer lock)
 const EDGE_RATE = 2.6;
 const VIEW_SMOOTH = 28;     // how quickly the camera eases to the aim; higher is snappier
 const PITCH_LIMIT = 1.5;
-const GAME_KEYS = new Set(['Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyF', 'KeyR', 'Enter',
+const GAME_KEYS = new Set(['Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyF', 'KeyR', 'KeyC', 'Enter',
   'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Minus', 'Equal']);
 
 const store = {
@@ -36,6 +38,8 @@ export class Player {
     this.viewPitch = 0;
     this.turnVel = 0;
     this.lookVel = 0;
+    this.turnHeld = 0;
+    this.bobAmp = 0;
     this.sens = Math.max(0.4, Math.min(3, Number(store.get('barnyard-sens', 1)) || 1));
     this.swipeInvert = store.get('barnyard-swipe-invert', '0') === '1';
     this.cursorX = 0.5; // pointer position across the window, 0..1 (used when there is no pointer lock)
@@ -136,6 +140,8 @@ export class Player {
     this.yaw = this.viewYaw = 0;
     this.pitch = this.viewPitch = 0;
     this.turnVel = this.lookVel = 0;
+    this.turnHeld = 0;
+    this.bobAmp = 0;
     this.wade = 0;
     this.hp = this.maxHp;
     this.hurtCooldown = 0;
@@ -165,7 +171,11 @@ export class Player {
     const turn = (k.has('ArrowLeft') || k.has('KeyQ') ? 1 : 0) - (k.has('ArrowRight') || k.has('KeyE') ? 1 : 0);
     const look = (k.has('ArrowUp') ? 1 : 0) - (k.has('ArrowDown') ? 1 : 0);
     const ease = 1 - Math.exp(-dt * 14);
-    this.turnVel += (turn * TURN_RATE - this.turnVel) * ease;
+    // A tap nudges the aim slowly; holding ramps up so a full turn is still quick.
+    this.turnHeld = turn !== 0 ? this.turnHeld + dt : 0;
+    const ramp = Math.min(1, this.turnHeld / TURN_RAMP);
+    const rate = TURN_SLOW + (TURN_FAST - TURN_SLOW) * ramp * ramp * (3 - 2 * ramp);
+    this.turnVel += (turn * rate - this.turnVel) * ease;
     this.lookVel += (look * LOOK_RATE - this.lookVel) * ease;
     let dYaw = this.turnVel * dt;
 
@@ -199,11 +209,11 @@ export class Player {
     const len = Math.hypot(mx, mz);
     if (len > 0) { mx /= len; mz /= len; }
 
-    const blend = 1 - Math.exp(-dt * (this.onGround ? 12 : 3));
+    const blend = 1 - Math.exp(-dt * (this.onGround ? 10 : 3));
     this.vel.x += (mx * speed - this.vel.x) * blend;
     this.vel.z += (mz * speed - this.vel.z) * blend;
 
-    if (k.has('Space') && this.onGround) {
+    if (k.has('KeyC') && this.onGround) { // Space is the fire button
       this.vel.y = JUMP;
       this.onGround = false;
       sfx.jump();
@@ -216,14 +226,16 @@ export class Player {
     this.pos.x = Math.max(-ARENA, Math.min(ARENA, this.pos.x));
     this.pos.z = Math.max(-ARENA, Math.min(ARENA, this.pos.z));
 
-    const moving = len > 0 && this.onGround;
-    if (moving) this.bob += dt * speed * 1.1;
+    // Head bob follows actual ground speed and fades in and out, so stopping never pops the camera.
+    const groundSpeed = this.onGround ? Math.hypot(this.vel.x, this.vel.z) : 0;
+    this.bob += dt * groundSpeed * 1.1;
+    this.bobAmp += (Math.min(1, groundSpeed / SPEED) - this.bobAmp) * (1 - Math.exp(-dt * 8));
     if (this.hurtCooldown > 0) this.hurtCooldown -= dt;
-    this.syncCamera(moving);
+    this.syncCamera();
   }
 
-  syncCamera(moving = false) {
-    const bobY = moving ? Math.sin(this.bob) * 0.05 : 0;
+  syncCamera() {
+    const bobY = Math.sin(this.bob) * 0.035 * this.bobAmp;
     this.camera.position.set(this.pos.x, this.pos.y + EYE + bobY - this.wade * 0.3, this.pos.z);
     this.camera.rotation.set(this.viewPitch, this.viewYaw, 0);
   }

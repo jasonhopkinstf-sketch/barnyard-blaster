@@ -18,6 +18,44 @@ function mesh(geo, color, x, y, z, parent, { shadow = true, receive = true } = {
 }
 const box = (w, h, d, color, x, y, z, parent, o) => mesh(new THREE.BoxGeometry(w, h, d), color, x, y, z, parent, o);
 
+// The farm is built from hundreds of small primitive meshes, and each one used to cost a
+// draw call in the main pass and another in the shadow pass. bake() merges every set of
+// identical parts (same shape, colour and shadow flags) under `root` into one InstancedMesh
+// parented to `container`. Subtrees flagged userData.dynamic are left alone because they
+// animate (windmill blades, ducks) or are baked separately (crop plants).
+const BAKEABLE = new Set(['BoxGeometry', 'ConeGeometry', 'CylinderGeometry', 'SphereGeometry', 'TorusGeometry']);
+function bake(root, container) {
+  root.updateWorldMatrix(true, true);
+  container.updateWorldMatrix(true, false);
+  const inv = container.matrixWorld.clone().invert();
+  const groups = new Map();
+  (function walk(o) {
+    if (o.userData.dynamic && o !== root) return;
+    if (o.isMesh && !o.isInstancedMesh && o.material.isMeshLambertMaterial && BAKEABLE.has(o.geometry.type) && o.children.length === 0) {
+      const key = `${o.geometry.type}${JSON.stringify(o.geometry.parameters)}|${o.material.color.getHex()}|${o.castShadow ? 1 : 0}${o.receiveShadow ? 1 : 0}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(o);
+    }
+    for (const c of o.children) walk(c);
+  })(root);
+  const m4 = new THREE.Matrix4();
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    const first = list[0];
+    const im = new THREE.InstancedMesh(first.geometry, first.material, list.length);
+    list.forEach((m, i) => {
+      im.setMatrixAt(i, m4.multiplyMatrices(inv, m.matrixWorld));
+      m.parent.remove(m);
+      if (i > 0) { m.geometry.dispose(); m.material.dispose(); }
+    });
+    im.castShadow = first.castShadow;
+    im.receiveShadow = first.receiveShadow;
+    im.instanceMatrix.needsUpdate = true;
+    im.computeBoundingSphere();
+    container.add(im);
+  }
+}
+
 // Deterministic RNG so the farm looks the same every load.
 export function mulberry32(a) {
   return function () {
@@ -101,6 +139,11 @@ export function buildWorld(scene, skyUniforms) {
     const a = (i / 12) * Math.PI * 2, r = 170;
     mesh(new THREE.SphereGeometry(45 + (i % 3) * 14, 14, 10), 0x5b9a3a, Math.cos(a) * r, -22, Math.sin(a) * r, scene, { shadow: false, receive: false });
   }
+
+  // Everything above is static: collapse it into instanced batches (see bake()).
+  blades.userData.dynamic = true;
+  for (const d of ducks) d.mesh.userData.dynamic = true;
+  bake(scene, scene);
 
   let t = 0;
   return {
@@ -324,6 +367,7 @@ function buildCropPatch(scene, def) {
   box(11, 0.4, 9, 0x7a5230, 0, 0.2, 0, g);
   const plants = new THREE.Group();
   plants.position.y = 0.4;
+  plants.userData.dynamic = true; // shrinks and shakes as the patch is eaten; batched on its own below
   g.add(plants);
   const cols = 5, rows = 4;
   for (let i = 0; i < cols; i++) {
@@ -344,6 +388,7 @@ function buildCropPatch(scene, def) {
       }
     }
   }
+  bake(plants, plants); // the patch's plants become two or three batches that still scale together
   return {
     name: def.name, x: def.x, z: def.z, radius: 4, hp: 100, maxHp: 100, alive: true, dirty: true, shake: 0,
     damage(amt) {
