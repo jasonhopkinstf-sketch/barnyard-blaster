@@ -1,0 +1,15 @@
+{
+  "name": "barnyard-blaster",
+  "version": "1.0.0",
+  "description": "Farm-themed first-person shooter in the browser. Three.js, no build step.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "start": "node server.mjs",
+    "vendor": "node -e \"for (const f of ['three.module.js','three.core.js']) require('fs').copyFileSync('node_modules/three/build/'+f,'vendor/'+f)\""
+  },
+  "devDependencies": {
+    "three": "^0.187.0"
+  }
+}
